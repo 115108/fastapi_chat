@@ -1,5 +1,8 @@
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from typing import List
+
+from fastapi.encoders import jsonable_encoder
+from fastapi.responses import JSONResponse
 from app.models.types import ChatMessage
 from app.db import db
 
@@ -46,4 +49,5 @@ async def get_history():
     async for msg in db.messages.find():
         msg["_id"] = str(msg["_id"])  # 转换 ObjectId 为字符串
         messages.append(msg)
-    return messages
+    json_data = jsonable_encoder(messages)
+    return JSONResponse(content=json_data)
