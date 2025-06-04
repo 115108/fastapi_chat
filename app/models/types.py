@@ -1,4 +1,6 @@
-from pydantic import BaseModel, Field
+import re
+from bson import ObjectId
+from pydantic import BaseModel, Field, field_validator, validator
 from typing import Literal, Optional, List
 from datetime import datetime, timezone
 
@@ -6,18 +8,54 @@ from datetime import datetime, timezone
 # ✅ 用户模型
 # ========================
 
+# 基础用户信息（公开数据）
 class UserBase(BaseModel):
-    username: str                             # 用户名（唯一）
-    nickname: Optional[str] = None            # 昵称
-    avatar: Optional[str] = None              # 头像 URL
+    username: str = Field(
+        ..., 
+        min_length=3, 
+        max_length=20, 
+        pattern=r"^[a-zA-Z][a-zA-Z0-9_.-]*$",
+        description="用户名",
+        example="string" 
+    )
+    nickname: Optional[str] = Field(None, description="用户昵称")
+    avatar: Optional[str] = Field(None, description="头像 URL")
+    joined_rooms: List[str] = Field(default_factory=list, description="加入的房间 ID 列表")
+    
 
+# 创建用户时的字段（包含密码）
 class UserCreate(UserBase):
-    password: str                             # 注册或登录时的密码（需要后端加密）
+    password: str = Field(
+        ..., 
+        min_length=8, 
+        max_length=32, 
+        description="密码，8-32位，必须包含大小写字母、数字和特殊字符",
+        example="string" 
+    )
 
+    @field_validator("password")
+    @classmethod
+    def validate_password_strength(cls, v):
+        if not re.search(r'[a-z]', v):
+            raise ValueError("密码必须包含至少一个小写字母")
+        if not re.search(r'[A-Z]', v):
+            raise ValueError("密码必须包含至少一个大写字母")
+        if not re.search(r'\d', v):
+            raise ValueError("密码必须包含至少一个数字")
+        if not re.search(r'[^a-zA-Z0-9]', v):
+            raise ValueError("密码必须包含至少一个特殊字符")
+        return v
+    
+class UserLogin(BaseModel):
+    username: str 
+    password: str 
+
+# 数据库中存储的完整信息
 class UserInDB(UserBase):
-    id: Optional[str] = None                  # 用户 ID（MongoDB 中是 _id）
-    created_at: datetime                      # 创建时间
-    status: Optional[str] = "offline"         # 当前状态：online / offline
+    id: Optional[str] = Field(None, alias="_id", description="用户ID（MongoDB _id）")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="创建时间")
+    status: Literal["online", "offline"] = Field(default="offline", description="用户在线状态")
+
 
 
 # ========================
@@ -38,10 +76,26 @@ class Message(BaseModel):
 # ========================
 
 class Room(BaseModel):
-    type: str                                 # 房间类型：private / group
-    members: List[str]                        # 成员用户 ID 列表
-    created_at: datetime                      # 房间创建时间
-    last_message: Optional[str] = None        # 最后一条消息内容（用于列表预览）
+    id: str = Field(default_factory=lambda: str(ObjectId()), alias="_id")
+    type: Literal["group", "private"]
+    name: Optional[str] = ""
+    members: List[str]
+    created_at: datetime
+
+    class Config:
+        allow_population_by_field_name = True  # ✅ 允许你用 id=... 创建实例，而不是必须用 _id
+        populate_by_name = True                # ✅ pydantic v2 推荐也加上这个（兼容性更好）
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+
+class RoomCreate(BaseModel):
+    name: str = ""
+    members: List[str]
+
+class PrivateRoomCreate(BaseModel):
+    user1: str
+    user2: str
 
 
 # ========================

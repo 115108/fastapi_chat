@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import chat, user
+from app.routers import chat, user, room
 
 app = FastAPI()
 
@@ -15,6 +15,7 @@ app.add_middleware(
 # 路由注册
 app.include_router(user.router)
 app.include_router(chat.router)
+app.include_router(room.router)
 
 @app.get("/")
 async def root():
